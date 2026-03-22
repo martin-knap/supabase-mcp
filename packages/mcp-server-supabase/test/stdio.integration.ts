@@ -9,10 +9,11 @@ type SetupOptions = {
   projectId?: string;
   readOnly?: boolean;
   allowedTools?: string[];
+  schemas?: string[];
 };
 
 async function setup(options: SetupOptions = {}) {
-  const { accessToken = ACCESS_TOKEN, projectId, readOnly, allowedTools } = options;
+  const { accessToken = ACCESS_TOKEN, projectId, readOnly, allowedTools, schemas } = options;
 
   const client = new Client(
     {
@@ -52,6 +53,10 @@ async function setup(options: SetupOptions = {}) {
     args.push('--allowed-tools', allowedTools.join(','));
   }
 
+  if (schemas && schemas.length > 0) {
+    args.push('--schemas', schemas.join(','));
+  }
+
   const clientTransport = new StdioClientTransport({
     command,
     args,
@@ -88,5 +93,18 @@ describe('stdio', () => {
     expect(names).toContain('execute_sql');
     expect(names).toContain('list_tables');
     expect(names).not.toContain('get_project');
+  });
+
+  test('schemas flag preserves database tools while scoping queries', async () => {
+    const { client } = await setup({
+      allowedTools: ['execute_sql', 'list_tables'],
+      schemas: ['analytics', 'raw'],
+    });
+
+    const { tools } = await client.listTools();
+    const names = tools.map((tool) => tool.name);
+
+    expect(names).toContain('execute_sql');
+    expect(names).toContain('list_tables');
   });
 });

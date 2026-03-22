@@ -57,6 +57,7 @@ type SetupOptions = {
   readOnly?: boolean;
   features?: string[];
   allowedTools?: string[];
+  allowedSchemas?: string[];
 };
 
 /**
@@ -69,6 +70,7 @@ async function setup(options: SetupOptions = {}) {
     readOnly,
     features,
     allowedTools,
+    allowedSchemas,
   } = options;
   const clientTransport = new StreamTransport();
   const serverTransport = new StreamTransport();
@@ -99,6 +101,7 @@ async function setup(options: SetupOptions = {}) {
     readOnly,
     features,
     allowedTools,
+    allowedSchemas,
   });
 
   await server.connect(serverTransport);
@@ -3398,6 +3401,84 @@ describe('docs tools', () => {
         title: 'Revenue trend',
       },
     });
+  });
+
+  test('list_tables defaults to allowedSchemas', async () => {
+    const database = {
+      executeSql: vi.fn().mockResolvedValue([]),
+      applyMigration: vi.fn(),
+      listMigrations: vi.fn().mockResolvedValue([]),
+    };
+
+    const { callTool } = await setup({
+      platform: { database } as unknown as SupabasePlatform,
+      projectId: 'test-project',
+      features: ['database'],
+      allowedSchemas: ['analytics', 'raw'],
+    });
+
+    await callTool({
+      name: 'list_tables',
+      arguments: { verbose: false },
+    });
+
+    expect(database.executeSql).toHaveBeenCalledWith(
+      'test-project',
+      expect.objectContaining({
+        parameters: ['analytics', 'raw'],
+        read_only: true,
+      })
+    );
+  });
+
+  test('execute_sql blocks disallowed schema references', async () => {
+    const database = {
+      executeSql: vi.fn().mockResolvedValue([]),
+      applyMigration: vi.fn(),
+      listMigrations: vi.fn().mockResolvedValue([]),
+    };
+
+    const { callTool } = await setup({
+      platform: { database } as unknown as SupabasePlatform,
+      projectId: 'test-project',
+      features: ['database'],
+      allowedSchemas: ['analytics', 'raw'],
+    });
+
+    await expect(
+      callTool({
+        name: 'execute_sql',
+        arguments: { query: 'select * from public.saved_views' },
+      })
+    ).rejects.toThrow('Query references disallowed schemas: public');
+  });
+
+  test('execute_sql injects the allowed schema search_path for unqualified queries', async () => {
+    const database = {
+      executeSql: vi.fn().mockResolvedValue([{ total: 42 }]),
+      applyMigration: vi.fn(),
+      listMigrations: vi.fn().mockResolvedValue([]),
+    };
+
+    const { callTool } = await setup({
+      platform: { database } as unknown as SupabasePlatform,
+      projectId: 'test-project',
+      features: ['database'],
+      allowedSchemas: ['analytics', 'raw'],
+    });
+
+    await callTool({
+      name: 'execute_sql',
+      arguments: { query: 'select * from fct_orders' },
+    });
+
+    expect(database.executeSql).toHaveBeenCalledWith(
+      'test-project',
+      expect.objectContaining({
+        query: expect.stringContaining(`set_config('search_path', '"analytics", "raw"', true)`),
+        read_only: undefined,
+      })
+    );
   });
 
   test('schema is only loaded when listing tools', async () => {

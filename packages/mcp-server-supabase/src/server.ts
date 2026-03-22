@@ -21,43 +21,13 @@ import { parseFeatureGroups } from './util.js';
 const { version } = packageJson;
 
 export type SupabaseMcpServerOptions = {
-  /**
-   * Platform implementation for Supabase.
-   */
   platform: SupabasePlatform;
-
-  /**
-   * The API URL for the Supabase Content API.
-   */
   contentApiUrl?: string;
-
-  /**
-   * The project ID to scope the server to.
-   *
-   * If undefined, the server will have access
-   * to all organizations and projects for the user.
-   */
   projectId?: string;
-
-  /**
-   * Executes database queries in read-only mode if true.
-   */
   readOnly?: boolean;
-
-  /**
-   * Features to enable.
-   * Options: 'account', 'branching', 'database', 'debugging', 'development', 'docs', 'functions', 'storage'
-   */
   features?: string[];
-
-  /**
-   * Restricts the final tool list to an explicit allowlist.
-   */
   allowedTools?: string[];
-
-  /**
-   * Callback for after a supabase tool is called.
-   */
+  allowedSchemas?: string[];
   onToolCall?: ToolCallCallback;
 };
 
@@ -73,9 +43,6 @@ const DEFAULT_FEATURES: FeatureGroup[] = [
 
 export const PLATFORM_INDEPENDENT_FEATURES: FeatureGroup[] = ['docs'];
 
-/**
- * Creates an MCP server for interacting with Supabase.
- */
 export function createSupabaseMcpServer(options: SupabaseMcpServerOptions) {
   const {
     platform,
@@ -83,6 +50,7 @@ export function createSupabaseMcpServer(options: SupabaseMcpServerOptions) {
     readOnly,
     features,
     allowedTools,
+    allowedSchemas,
     contentApiUrl = 'https://supabase.com/docs/api/graphql',
     onToolCall,
   } = options;
@@ -94,14 +62,12 @@ export function createSupabaseMcpServer(options: SupabaseMcpServerOptions) {
   const allowedToolSet =
     allowedTools && allowedTools.length > 0 ? new Set(allowedTools) : null;
 
-  // Filter the default features based on the platform's capabilities
   const availableDefaultFeatures = DEFAULT_FEATURES.filter(
     (key) =>
       PLATFORM_INDEPENDENT_FEATURES.includes(key) ||
       Object.keys(platform).includes(key)
   );
 
-  // Validate the desired features against the platform's available features
   const enabledFeatures = parseFeatureGroups(
     platform,
     features ?? availableDefaultFeatures
@@ -112,8 +78,6 @@ export function createSupabaseMcpServer(options: SupabaseMcpServerOptions) {
     title: 'Supabase',
     version,
     async onInitialize(info) {
-      // Note: in stateless HTTP mode, `onInitialize` will not always be called
-      // so we cannot rely on it for initialization. It's still useful for telemetry.
       const { clientInfo } = info;
       const userAgent = `supabase-mcp/${version} (${clientInfo.name}/${clientInfo.version})`;
 
@@ -155,6 +119,7 @@ export function createSupabaseMcpServer(options: SupabaseMcpServerOptions) {
             database,
             projectId,
             readOnly,
+            allowedSchemas,
           })
         );
       }

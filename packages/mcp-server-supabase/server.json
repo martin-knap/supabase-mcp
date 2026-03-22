@@ -108,6 +108,13 @@
         },
         {
           "type": "named",
+          "name": "--schemas",
+          "description": "Comma-separated schema allowlist for list_tables and execute_sql",
+          "format": "string",
+          "isRequired": false
+        },
+        {
+          "type": "named",
           "name": "--api-url",
           "description": "Custom API URL",
           "format": "string",
