@@ -46,14 +46,26 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        padding: 14px 16px;
+        padding: 10px 12px;
         border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
       }
 
-      .chart-title {
+      .chart-meta {
         min-width: 0;
-        font-size: 13px;
-        font-weight: 500;
+      }
+
+      .chart-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: currentColor;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .chart-subtitle {
+        margin-top: 2px;
+        font-size: 12px;
         color: color-mix(in srgb, currentColor 68%, transparent);
         white-space: nowrap;
         overflow: hidden;
@@ -78,7 +90,7 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
 
       #chart {
         width: 100%;
-        height: clamp(340px, 60vh, 460px);
+        height: clamp(360px, 64vh, 520px);
       }
     </style>
   </head>
@@ -86,7 +98,10 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
     <div class="shell">
       <div class="panel">
         <div class="toolbar">
-          <div class="chart-title" id="chart-title"></div>
+          <div class="chart-meta">
+            <div class="chart-title" id="chart-title"></div>
+            <div class="chart-subtitle" id="chart-subtitle"></div>
+          </div>
           <button class="save-button" id="save-button" disabled>Uložiť graf</button>
         </div>
         <div id="chart"></div>
@@ -96,6 +111,7 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
     <script>
       const chartNode = document.getElementById("chart");
       const chartTitleNode = document.getElementById("chart-title");
+      const chartSubtitleNode = document.getElementById("chart-subtitle");
       const saveButton = document.getElementById("save-button");
       const chart = echarts.init(chartNode, null, { renderer: "canvas" });
       const seriesColors = ["#5b7cfa", "#55b6a9", "#d7a54b", "#8a78d8"];
@@ -476,7 +492,7 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
           color: seriesColors,
           backgroundColor: "transparent",
           animationDuration: 600,
-          title: { show: false },
+          title: { show: false, text: "", subtext: "" },
           tooltip: {
             trigger: isPie || isFunnel ? "item" : "axis",
             backgroundColor: "rgba(15, 23, 42, 0.94)",
@@ -598,6 +614,11 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
           ? payload.title
           : typeof payload.chartConfig?.title === "string"
             ? payload.chartConfig.title
+            : "";
+        chartSubtitleNode.textContent = typeof payload.subtitle === "string"
+          ? payload.subtitle
+          : typeof payload.chartConfig?.subtitle === "string"
+            ? payload.chartConfig.subtitle
             : "";
         chart.setOption(buildOption(payload), true);
         saveButton.disabled = false;
