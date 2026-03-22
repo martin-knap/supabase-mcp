@@ -12,7 +12,7 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
     <style>
       :root {
         color-scheme: light dark;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
       * {
@@ -23,7 +23,10 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
         margin: 0;
         min-height: 100vh;
         color: currentColor;
-        background: color-mix(in srgb, currentColor 3%, transparent);
+        background:
+          radial-gradient(circle at top left, color-mix(in srgb, #5b7cfa 12%, transparent), transparent 34%),
+          radial-gradient(circle at bottom right, color-mix(in srgb, #55b6a9 12%, transparent), transparent 30%),
+          color-mix(in srgb, currentColor 3%, transparent);
       }
 
       .shell {
@@ -31,33 +34,20 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
       }
 
       .panel {
-        border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+        border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
         border-radius: 20px;
         background: color-mix(in srgb, currentColor 2%, white 96%);
         overflow: hidden;
+        box-shadow: 0 22px 60px rgba(15, 23, 42, 0.08);
       }
 
       .toolbar {
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: flex-end;
         gap: 12px;
         padding: 14px 16px;
         border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
-      }
-
-      .eyebrow {
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        opacity: 0.6;
-      }
-
-      .title {
-        margin-top: 4px;
-        font-size: 15px;
-        font-weight: 700;
       }
 
       .save-button {
@@ -67,7 +57,7 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
         font-size: 12px;
         font-weight: 700;
         color: white;
-        background: linear-gradient(135deg, #10b981, #2563eb);
+        background: linear-gradient(135deg, #5b7cfa, #55b6a9);
         cursor: pointer;
       }
 
@@ -78,7 +68,7 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
 
       #chart {
         width: 100%;
-        height: 420px;
+        height: clamp(340px, 60vh, 460px);
       }
     </style>
   </head>
@@ -86,10 +76,6 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
     <div class="shell">
       <div class="panel">
         <div class="toolbar">
-          <div>
-            <div class="eyebrow">Supabase SQL chart</div>
-            <div class="title" id="chart-title">Waiting for query results</div>
-          </div>
           <button class="save-button" id="save-button" disabled>Uložiť graf</button>
         </div>
         <div id="chart"></div>
@@ -98,9 +84,14 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
 
     <script>
       const chartNode = document.getElementById("chart");
-      const chartTitle = document.getElementById("chart-title");
       const saveButton = document.getElementById("save-button");
       const chart = echarts.init(chartNode, null, { renderer: "canvas" });
+      const seriesColors = ["#5b7cfa", "#55b6a9", "#d7a54b", "#8a78d8"];
+      const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+      const compactNumberFormatter = new Intl.NumberFormat("en-US", {
+        notation: "compact",
+        maximumFractionDigits: 1,
+      });
       let latestPayload = null;
 
       function postToHost(message) {
@@ -132,6 +123,46 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
         return data.map((row) => String(row?.[key] ?? ""));
       }
 
+      function formatValue(value) {
+        if (Array.isArray(value)) {
+          return formatValue(value[value.length - 1]);
+        }
+        if (typeof value === "number") {
+          return numberFormatter.format(value);
+        }
+        if (typeof value === "string") {
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? numberFormatter.format(parsed) : value;
+        }
+        return String(value ?? "");
+      }
+
+      function formatAxisValue(value) {
+        const numeric = typeof value === "number" ? value : Number(value);
+        if (!Number.isFinite(numeric)) return String(value ?? "");
+        return Math.abs(numeric) >= 1000
+          ? compactNumberFormatter.format(numeric)
+          : numberFormatter.format(numeric);
+      }
+
+      function buildTooltipFormatter() {
+        return function formatter(params) {
+          const items = Array.isArray(params) ? params : [params];
+          const first = items[0];
+          if (!first) return "";
+
+          if (items.length === 1 && !first.axisValueLabel) {
+            return (first.marker || "") + (first.name || "") + ": " + formatValue(first.value);
+          }
+
+          const title = first.axisValueLabel || first.name || "";
+          const lines = items.map((item) =>
+            (item.marker || "") + (item.seriesName || "") + ": " + formatValue(item.value)
+          );
+          return [title, ...lines].join("<br/>");
+        };
+      }
+
       function buildRangeBand(data, seriesKeys) {
         const [avgKey, minKey, maxKey] = seriesKeys.length >= 3
           ? seriesKeys
@@ -153,7 +184,11 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
             name: maxKey || "range",
             type: "bar",
             stack: "range",
-            itemStyle: { color: "rgba(37, 99, 235, 0.24)", borderRadius: 999 },
+            barMaxWidth: 28,
+            itemStyle: {
+              color: "rgba(91, 124, 250, 0.24)",
+              borderRadius: 999,
+            },
             data: spreads,
           },
         ];
@@ -161,7 +196,7 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
           series.push({
             name: avgKey,
             type: "scatter",
-            symbolSize: 10,
+            symbolSize: 9,
             itemStyle: { color: "#0f172a" },
             data: data.map((row) => normalizeNumber(row[avgKey])),
           });
@@ -192,7 +227,7 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
             stack: "range-band",
             lineStyle: { opacity: 0 },
             symbol: "none",
-            areaStyle: { color: "rgba(37, 99, 235, 0.18)" },
+            areaStyle: { color: "rgba(91, 124, 250, 0.18)" },
             data: band,
           },
         ];
@@ -200,7 +235,9 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
           series.push({
             name: avgKey,
             type: "line",
-            smooth: true,
+            smooth: false,
+            symbol: "circle",
+            symbolSize: 7,
             lineStyle: { width: 3 },
             data: data.map((row) => normalizeNumber(row[avgKey])),
           });
@@ -208,13 +245,17 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
           series.push({
             name: minKey || "min",
             type: "line",
-            smooth: true,
+            smooth: false,
+            symbol: "circle",
+            symbolSize: 6,
             data: lowData,
           });
           series.push({
             name: maxKey || "max",
             type: "line",
-            smooth: true,
+            smooth: false,
+            symbol: "circle",
+            symbolSize: 6,
             data: highData,
           });
         }
@@ -226,6 +267,10 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
         return [{
           name: config.title || "distribution",
           type: "boxplot",
+          itemStyle: {
+            color: "rgba(91, 124, 250, 0.2)",
+            borderColor: seriesColors[0],
+          },
           data: stats,
         }];
       }
@@ -237,16 +282,26 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
         }));
         return {
           radar: { indicator: indicators },
-          series: seriesKeys.map((key) => ({
+          series: seriesKeys.map((key, index) => ({
             name: key,
             type: "radar",
+            lineStyle: { width: 2 },
+            itemStyle: { color: seriesColors[index % seriesColors.length] },
+            areaStyle: { opacity: 0.12 },
             data: [{ value: data.map((row) => normalizeNumber(row[key])), name: key }],
           })),
         };
       }
 
       function buildChordSeries(data) {
-        const names = Array.from(new Set(data.flatMap((row) => [String(row?.source ?? row?.from ?? ""), String(row?.target ?? row?.to ?? "")]).filter(Boolean)));
+        const names = Array.from(
+          new Set(
+            data.flatMap((row) => [
+              String(row?.source ?? row?.from ?? ""),
+              String(row?.target ?? row?.to ?? ""),
+            ]).filter(Boolean)
+          )
+        );
         return [{
           type: "graph",
           layout: "circular",
@@ -266,16 +321,81 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
       function buildBeeswarmSeries(data, config, seriesKeys) {
         const categories = Array.from(new Set(categoryValues(data, config.x_axis)));
         const categoryIndex = new Map(categories.map((value, index) => [value, index]));
-        return seriesKeys.map((key) => ({
+        return seriesKeys.map((key, index) => ({
           name: key,
           type: "scatter",
           symbolSize: 10,
-          data: data.map((row, index) => {
+          itemStyle: { color: seriesColors[index % seriesColors.length] },
+          data: data.map((row, rowIndex) => {
             const category = String(row?.[config.x_axis] ?? "");
-            const jitter = ((index % 7) - 3) * 0.06;
+            const jitter = ((rowIndex % 7) - 3) * 0.06;
             return [normalizeNumber(row[key]), (categoryIndex.get(category) ?? 0) + jitter, category];
           }),
         }));
+      }
+
+      function buildCartesianSeries(data, config, seriesKeys, chartType) {
+        return seriesKeys.map((key, index) => ({
+          name: key,
+          type: chartType === "area" ? "line" : chartType,
+          smooth: false,
+          lineStyle:
+            chartType === "line" || chartType === "area"
+              ? { width: 3, color: seriesColors[index % seriesColors.length] }
+              : undefined,
+          itemStyle: {
+            color: seriesColors[index % seriesColors.length],
+            borderRadius: chartType === "bar" ? [8, 8, 0, 0] : undefined,
+          },
+          areaStyle:
+            chartType === "area"
+              ? {
+                  opacity: 0.16,
+                  color: seriesColors[index % seriesColors.length],
+                }
+              : undefined,
+          symbol: chartType === "scatter" ? "circle" : "emptyCircle",
+          symbolSize: chartType === "scatter" ? 10 : 7,
+          barMaxWidth: chartType === "bar" ? 32 : undefined,
+          data: chartType === "scatter"
+            ? data.map((row) => [normalizeNumber(row[config.x_axis]), normalizeNumber(row[key])])
+            : data.map((row) => normalizeNumber(row[key])),
+        }));
+      }
+
+      function buildMixLineBarSeries(data, seriesKeys) {
+        const [barKey, lineKey] = seriesKeys;
+        const series = [
+          {
+            name: barKey,
+            type: "bar",
+            yAxisIndex: 0,
+            barMaxWidth: 32,
+            itemStyle: {
+              color: seriesColors[0],
+              borderRadius: [8, 8, 0, 0],
+            },
+            emphasis: { focus: "series" },
+            data: data.map((row) => normalizeNumber(row[barKey])),
+          },
+        ];
+
+        if (lineKey) {
+          series.push({
+            name: lineKey,
+            type: "line",
+            yAxisIndex: 1,
+            smooth: false,
+            symbol: "circle",
+            symbolSize: 8,
+            lineStyle: { width: 3, color: seriesColors[1] },
+            itemStyle: { color: seriesColors[1] },
+            emphasis: { focus: "series" },
+            data: data.map((row) => normalizeNumber(row[lineKey])),
+          });
+        }
+
+        return series;
       }
 
       function buildOption(payload) {
@@ -292,6 +412,7 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
         const isBoxplot = chartType === "boxplot";
         const isBarRange = chartType === "bar_range";
         const isLineRange = chartType === "line_range";
+        const isMixLineBar = chartType === "mix-line-bar";
 
         let radarConfig = null;
         let series;
@@ -302,9 +423,10 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
             type: "pie",
             radius: ["34%", "72%"],
             padAngle: 2,
-            data: data.map((row) => ({
+            data: data.map((row, index) => ({
               name: String(row?.[config.x_axis] ?? ""),
               value: normalizeNumber(row[seriesKeys[0]]),
+              itemStyle: { color: seriesColors[index % seriesColors.length] },
             })),
           }];
         } else if (isFunnel) {
@@ -313,6 +435,7 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
             type: "funnel",
             left: "10%",
             width: "80%",
+            itemStyle: { color: seriesColors[0] },
             data: data.map((row) => ({
               name: String(row?.[config.x_axis] ?? ""),
               value: normalizeNumber(row[seriesKeys[0]]),
@@ -331,20 +454,14 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
           series = buildRangeBand(data, seriesKeys);
         } else if (isLineRange) {
           series = buildLineRangeSeries(data, seriesKeys);
+        } else if (isMixLineBar) {
+          series = buildMixLineBarSeries(data, seriesKeys);
         } else {
-          series = seriesKeys.map((key) => ({
-            name: key,
-            type: chartType === "area" ? "line" : chartType,
-            smooth: chartType === "line" || chartType === "area",
-            areaStyle: chartType === "area" ? { opacity: 0.16 } : undefined,
-            symbolSize: chartType === "scatter" ? 10 : undefined,
-            data: chartType === "scatter"
-              ? data.map((row) => [normalizeNumber(row[config.x_axis]), normalizeNumber(row[key])])
-              : data.map((row) => normalizeNumber(row[key])),
-          }));
+          series = buildCartesianSeries(data, config, seriesKeys, chartType);
         }
 
         return {
+          color: seriesColors,
           backgroundColor: "transparent",
           animationDuration: 600,
           title: {
@@ -352,20 +469,37 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
             subtext: config.subtitle || payload.subtitle || "",
             left: 0,
             top: 0,
+            textStyle: {
+              fontSize: 18,
+              fontWeight: 600,
+            },
+            subtextStyle: {
+              fontSize: 12,
+              color: "#64748b",
+            },
           },
           tooltip: {
             trigger: isPie || isFunnel ? "item" : "axis",
+            backgroundColor: "rgba(15, 23, 42, 0.94)",
+            borderWidth: 0,
+            padding: [10, 12],
+            textStyle: { color: "#f8fafc" },
+            formatter: buildTooltipFormatter(),
           },
           legend: {
-            show: !isRadar && !isChord,
+            show: !isRadar && !isChord && (series.length > 1 || isPie || isFunnel),
             top: 8,
             right: 0,
+            icon: "circle",
+            itemWidth: 10,
+            itemHeight: 10,
+            textStyle: { color: "#64748b" },
           },
           grid: isPie || isFunnel || isRadar || isChord ? undefined : {
-            left: 12,
-            right: 12,
-            top: 72,
-            bottom: 12,
+            left: 20,
+            right: isMixLineBar ? 24 : 20,
+            top: 84,
+            bottom: 20,
             containLabel: true,
           },
           xAxis: isPie || isFunnel || isRadar || isChord
@@ -373,12 +507,18 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
             : isBeeswarm
               ? {
                   type: "value",
-                  axisLabel: { formatter: "{value}" },
+                  axisLine: { lineStyle: { color: "rgba(148, 163, 184, 0.3)" } },
+                  axisTick: { show: false },
+                  axisLabel: { formatter: (value) => formatAxisValue(value) },
                 }
               : {
                   type: isScatter ? "value" : "category",
                   data: isScatter ? undefined : categoryValues(data, config.x_axis),
-                  boundaryGap: chartType === "bar" || isBarRange,
+                  boundaryGap: chartType === "bar" || isBarRange || isMixLineBar,
+                  axisLine: { lineStyle: { color: "rgba(148, 163, 184, 0.3)" } },
+                  axisTick: { show: false },
+                  axisLabel: { color: "#64748b" },
+                  splitLine: isScatter ? { lineStyle: { color: "rgba(148, 163, 184, 0.14)" } } : undefined,
                 },
           yAxis: isPie || isFunnel || isRadar || isChord
             ? undefined
@@ -386,10 +526,52 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
               ? {
                   type: "category",
                   data: Array.from(new Set(categoryValues(data, config.x_axis))),
+                  axisLine: { show: false },
+                  axisTick: { show: false },
+                  axisLabel: { color: "#64748b" },
                 }
-              : {
-                  type: "value",
-                },
+              : isMixLineBar
+                ? [
+                    {
+                      type: "value",
+                      name: seriesKeys[0],
+                      axisLine: {
+                        show: true,
+                        lineStyle: { color: "rgba(148, 163, 184, 0.3)" },
+                      },
+                      axisTick: { show: false },
+                      axisLabel: {
+                        color: "#64748b",
+                        formatter: (value) => formatAxisValue(value),
+                      },
+                      splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.14)" } },
+                    },
+                    {
+                      type: "value",
+                      name: seriesKeys[1] || "",
+                      position: "right",
+                      axisLine: {
+                        show: true,
+                        lineStyle: { color: "rgba(148, 163, 184, 0.3)" },
+                      },
+                      axisTick: { show: false },
+                      axisLabel: {
+                        color: "#64748b",
+                        formatter: (value) => formatAxisValue(value),
+                      },
+                      splitLine: { show: false },
+                    },
+                  ]
+                : {
+                    type: "value",
+                    axisLine: { show: false },
+                    axisTick: { show: false },
+                    axisLabel: {
+                      color: "#64748b",
+                      formatter: (value) => formatAxisValue(value),
+                    },
+                    splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.14)" } },
+                  },
           radar: radarConfig?.radar,
           series,
         };
@@ -413,11 +595,12 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
       function renderPayload(payload) {
         if (!payload || typeof payload !== "object") return;
         latestPayload = payload;
-        const config = payload.chartConfig || payload;
-        chartTitle.textContent = config.title || payload.title || "SQL chart";
         chart.setOption(buildOption(payload), true);
         saveButton.disabled = false;
-        requestAnimationFrame(postSize);
+        requestAnimationFrame(() => {
+          chart.resize();
+          postSize();
+        });
       }
 
       saveButton.addEventListener("click", () => {

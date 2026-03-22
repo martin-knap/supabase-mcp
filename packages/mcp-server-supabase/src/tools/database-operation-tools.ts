@@ -20,6 +20,7 @@ type DatabaseOperationToolsOptions = {
 const chartTypeSchema = z.enum([
   'line',
   'bar',
+  'mix-line-bar',
   'pie',
   'scatter',
   'area',
