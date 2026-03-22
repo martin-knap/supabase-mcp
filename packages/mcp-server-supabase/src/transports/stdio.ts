@@ -18,6 +18,7 @@ async function main() {
       ['api-url']: apiUrl,
       ['version']: showVersion,
       ['features']: cliFeatures,
+      ['allowed-tools']: cliAllowedTools,
     },
   } = parseArgs({
     options: {
@@ -40,6 +41,9 @@ async function main() {
       ['features']: {
         type: 'string',
       },
+      ['allowed-tools']: {
+        type: 'string',
+      },
     },
   });
 
@@ -58,6 +62,7 @@ async function main() {
   }
 
   const features = cliFeatures ? parseList(cliFeatures) : undefined;
+  const allowedTools = cliAllowedTools ? parseList(cliAllowedTools) : undefined;
 
   const platform = createSupabaseApiPlatform({
     accessToken,
@@ -69,6 +74,7 @@ async function main() {
     projectId,
     readOnly,
     features,
+    allowedTools,
   });
 
   const transport = new StdioServerTransport();

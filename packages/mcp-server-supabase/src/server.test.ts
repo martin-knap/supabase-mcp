@@ -56,13 +56,20 @@ type SetupOptions = {
   platform?: SupabasePlatform;
   readOnly?: boolean;
   features?: string[];
+  allowedTools?: string[];
 };
 
 /**
  * Sets up an MCP client and server for testing.
  */
 async function setup(options: SetupOptions = {}) {
-  const { accessToken = ACCESS_TOKEN, projectId, readOnly, features } = options;
+  const {
+    accessToken = ACCESS_TOKEN,
+    projectId,
+    readOnly,
+    features,
+    allowedTools,
+  } = options;
   const clientTransport = new StreamTransport();
   const serverTransport = new StreamTransport();
 
@@ -91,6 +98,7 @@ async function setup(options: SetupOptions = {}) {
     projectId,
     readOnly,
     features,
+    allowedTools,
   });
 
   await server.connect(serverTransport);
@@ -3314,6 +3322,82 @@ describe('docs tools', () => {
 
     const minifiedSchema = gqlmin(contentApiMockSchema);
     expect(tool.description.includes(minifiedSchema)).toBe(true);
+  });
+
+  test('filters the tool list with allowedTools', async () => {
+    const database = {
+      executeSql: vi.fn().mockResolvedValue([{ value: 1 }]),
+      applyMigration: vi.fn(),
+      listMigrations: vi.fn().mockResolvedValue([]),
+    };
+
+    const { client, callTool } = await setup({
+      platform: { database } as unknown as SupabasePlatform,
+      features: ['database'],
+      allowedTools: ['execute_sql'],
+    });
+
+    const { tools } = await client.listTools();
+    expect(tools.map((tool) => tool.name)).toEqual(['execute_sql']);
+
+    await expect(
+      callTool({
+        name: 'list_tables',
+        arguments: { schemas: ['public'], verbose: false },
+      })
+    ).rejects.toThrow('tool not found');
+  });
+
+  test('execute_sql returns chart UI metadata when display_as is chart', async () => {
+    const rows = [
+      { day: '2026-03-20', revenue: 12 },
+      { day: '2026-03-21', revenue: 18 },
+    ];
+    const database = {
+      executeSql: vi.fn().mockResolvedValue(rows),
+      applyMigration: vi.fn(),
+      listMigrations: vi.fn().mockResolvedValue([]),
+    };
+
+    const { client } = await setup({
+      platform: { database } as unknown as SupabasePlatform,
+      projectId: 'test-project',
+      features: ['database'],
+      allowedTools: ['execute_sql'],
+    });
+
+    const result = CallToolResultSchema.parse(
+      await client.callTool({
+        name: 'execute_sql',
+        arguments: {
+          query: 'select day, revenue from daily_revenue',
+          display_as: 'chart',
+          chart_type: 'line',
+          chart_config: {
+            x_axis: 'day',
+            y_axis: 'revenue',
+            title: 'Revenue trend',
+          },
+        },
+      })
+    );
+
+    expect(result._meta).toEqual({
+      'ui/resourceUri': 'ui:///charts/render',
+      ui: { resourceUri: 'ui:///charts/render' },
+    });
+    expect(result.structuredContent).toMatchObject({
+      displayAs: 'chart',
+      rows,
+      rowCount: 2,
+      chartType: 'line',
+      chartConfig: {
+        x_axis: 'day',
+        y_axis: 'revenue',
+        chart_type: 'line',
+        title: 'Revenue trend',
+      },
+    });
   });
 
   test('schema is only loaded when listing tools', async () => {

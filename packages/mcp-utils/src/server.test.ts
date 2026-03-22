@@ -284,6 +284,49 @@ describe('resources helper', () => {
     ]);
   });
 
+  test('passes through raw MCP tool results', async () => {
+    const server = createMcpServer({
+      name: 'test-server',
+      version: '0.0.0',
+      tools: {
+        chart: tool({
+          description: 'Render a chart',
+          annotations: {
+            title: 'Chart',
+            readOnlyHint: true,
+          },
+          parameters: z.object({ query: z.string() }),
+          outputSchema: z.object({ ok: z.boolean().optional() }),
+          execute: async ({ query }) => ({
+            content: [{ type: 'text', text: JSON.stringify({ query }) }],
+            structuredContent: { query, rows: [{ day: '2026-03-22', total: 42 }] },
+            _meta: {
+              'ui/resourceUri': 'ui:///charts/render',
+              ui: { resourceUri: 'ui:///charts/render' },
+            },
+          }),
+        }),
+      },
+    });
+
+    const { client } = await setup({ server });
+    const output = CallToolResultSchema.parse(
+      await client.callTool({
+        name: 'chart',
+        arguments: { query: 'select 1' },
+      })
+    );
+
+    expect(output.structuredContent).toEqual({
+      query: 'select 1',
+      rows: [{ day: '2026-03-22', total: 42 }],
+    });
+    expect(output._meta).toEqual({
+      'ui/resourceUri': 'ui:///charts/render',
+      ui: { resourceUri: 'ui:///charts/render' },
+    });
+  });
+
   test('should not overwrite existing scheme in resource URIs', () => {
     const output = resources('my-scheme', [
       resource('/schemas', {

@@ -4,6 +4,7 @@ import {
   type ToolCallCallback,
 } from '@supabase/mcp-utils';
 import packageJson from '../package.json' with { type: 'json' };
+import { getChartResources } from './chart-resource.js';
 import { createContentApiClient } from './content-api/index.js';
 import type { SupabasePlatform } from './platform/types.js';
 import { getAccountTools } from './tools/account-tools.js';
@@ -50,6 +51,11 @@ export type SupabaseMcpServerOptions = {
   features?: string[];
 
   /**
+   * Restricts the final tool list to an explicit allowlist.
+   */
+  allowedTools?: string[];
+
+  /**
    * Callback for after a supabase tool is called.
    */
   onToolCall?: ToolCallCallback;
@@ -76,6 +82,7 @@ export function createSupabaseMcpServer(options: SupabaseMcpServerOptions) {
     projectId,
     readOnly,
     features,
+    allowedTools,
     contentApiUrl = 'https://supabase.com/docs/api/graphql',
     onToolCall,
   } = options;
@@ -83,6 +90,9 @@ export function createSupabaseMcpServer(options: SupabaseMcpServerOptions) {
   const contentApiClientPromise = createContentApiClient(contentApiUrl, {
     'User-Agent': `supabase-mcp/${version}`,
   });
+
+  const allowedToolSet =
+    allowedTools && allowedTools.length > 0 ? new Set(allowedTools) : null;
 
   // Filter the default features based on the platform's capabilities
   const availableDefaultFeatures = DEFAULT_FEATURES.filter(
@@ -115,6 +125,7 @@ export function createSupabaseMcpServer(options: SupabaseMcpServerOptions) {
       ]);
     },
     onToolCall,
+    resources: getChartResources(),
     tools: async () => {
       const contentApiClient = await contentApiClientPromise;
       const tools: Record<string, Tool> = {};
@@ -174,7 +185,13 @@ export function createSupabaseMcpServer(options: SupabaseMcpServerOptions) {
         Object.assign(tools, getStorageTools({ storage, projectId, readOnly }));
       }
 
-      return tools;
+      if (!allowedToolSet) {
+        return tools;
+      }
+
+      return Object.fromEntries(
+        Object.entries(tools).filter(([name]) => allowedToolSet.has(name))
+      );
     },
   });
 

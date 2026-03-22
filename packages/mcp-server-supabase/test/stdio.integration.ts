@@ -8,10 +8,11 @@ type SetupOptions = {
   accessToken?: string;
   projectId?: string;
   readOnly?: boolean;
+  allowedTools?: string[];
 };
 
 async function setup(options: SetupOptions = {}) {
-  const { accessToken = ACCESS_TOKEN, projectId, readOnly } = options;
+  const { accessToken = ACCESS_TOKEN, projectId, readOnly, allowedTools } = options;
 
   const client = new Client(
     {
@@ -47,6 +48,10 @@ async function setup(options: SetupOptions = {}) {
     args.push('--read-only');
   }
 
+  if (allowedTools && allowedTools.length > 0) {
+    args.push('--allowed-tools', allowedTools.join(','));
+  }
+
   const clientTransport = new StdioClientTransport({
     command,
     args,
@@ -70,5 +75,18 @@ describe('stdio', () => {
     const setupPromise = setup({ accessToken: null as any });
 
     await expect(setupPromise).rejects.toThrow('MCP error -32000');
+  });
+
+  test('allowed-tools filters listed tools', async () => {
+    const { client } = await setup({
+      allowedTools: ['execute_sql', 'list_tables'],
+    });
+
+    const { tools } = await client.listTools();
+    const names = tools.map((tool) => tool.name);
+
+    expect(names).toContain('execute_sql');
+    expect(names).toContain('list_tables');
+    expect(names).not.toContain('get_project');
   });
 });

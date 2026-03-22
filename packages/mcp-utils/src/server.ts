@@ -60,7 +60,16 @@ export type Tool<
   annotations?: Annotations;
   parameters: Params;
   outputSchema: OutputSchema;
-  execute(params: z.infer<Params>): Promise<z.infer<OutputSchema>>;
+  execute(
+    params: z.infer<Params>
+  ): Promise<z.infer<OutputSchema> | RawToolResult>;
+};
+
+export type RawToolResult = {
+  content?: Array<Record<string, unknown>>;
+  structuredContent?: Record<string, unknown>;
+  _meta?: Record<string, unknown>;
+  isError?: boolean;
 };
 
 /**
@@ -513,6 +522,10 @@ export function createMcpServer(options: McpServerOptions) {
 
         const result = await executeWithCallback(tool);
 
+        if (isRawToolResult(result)) {
+          return result;
+        }
+
         const content =
           result != null
             ? [{ type: 'text', text: JSON.stringify(result) }]
@@ -541,6 +554,18 @@ export function createMcpServer(options: McpServerOptions) {
   type Result = ExpandRecursively<ExtractResult<typeof server>>;
 
   return server as Server<Request, Notification, Result>;
+}
+
+function isRawToolResult(result: unknown): result is RawToolResult {
+  if (!result || typeof result !== 'object') {
+    return false;
+  }
+
+  return (
+    'content' in result ||
+    'structuredContent' in result ||
+    'isError' in result
+  );
 }
 
 function enumerateError(error: unknown) {
