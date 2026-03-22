@@ -44,10 +44,20 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
       .toolbar {
         display: flex;
         align-items: center;
-        justify-content: flex-end;
+        justify-content: space-between;
         gap: 12px;
         padding: 14px 16px;
         border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+      }
+
+      .chart-title {
+        min-width: 0;
+        font-size: 13px;
+        font-weight: 500;
+        color: color-mix(in srgb, currentColor 68%, transparent);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .save-button {
@@ -76,6 +86,7 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
     <div class="shell">
       <div class="panel">
         <div class="toolbar">
+          <div class="chart-title" id="chart-title"></div>
           <button class="save-button" id="save-button" disabled>Uložiť graf</button>
         </div>
         <div id="chart"></div>
@@ -84,6 +95,7 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
 
     <script>
       const chartNode = document.getElementById("chart");
+      const chartTitleNode = document.getElementById("chart-title");
       const saveButton = document.getElementById("save-button");
       const chart = echarts.init(chartNode, null, { renderer: "canvas" });
       const seriesColors = ["#5b7cfa", "#55b6a9", "#d7a54b", "#8a78d8"];
@@ -464,20 +476,7 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
           color: seriesColors,
           backgroundColor: "transparent",
           animationDuration: 600,
-          title: {
-            text: config.title || payload.title || "SQL chart",
-            subtext: config.subtitle || payload.subtitle || "",
-            left: 0,
-            top: 0,
-            textStyle: {
-              fontSize: 18,
-              fontWeight: 600,
-            },
-            subtextStyle: {
-              fontSize: 12,
-              color: "#64748b",
-            },
-          },
+          title: { show: false },
           tooltip: {
             trigger: isPie || isFunnel ? "item" : "axis",
             backgroundColor: "rgba(15, 23, 42, 0.94)",
@@ -595,6 +594,11 @@ const RENDER_CHART_HTML = String.raw`<!doctype html>
       function renderPayload(payload) {
         if (!payload || typeof payload !== "object") return;
         latestPayload = payload;
+        chartTitleNode.textContent = typeof payload.title === "string"
+          ? payload.title
+          : typeof payload.chartConfig?.title === "string"
+            ? payload.chartConfig.title
+            : "";
         chart.setOption(buildOption(payload), true);
         saveButton.disabled = false;
         requestAnimationFrame(() => {
