@@ -863,14 +863,7 @@ describe('tools', () => {
       },
     });
 
-    expect(result.result).toContain('untrusted user data');
-    expect(result.result).toMatch(
-      /<untrusted-data-\w{8}-\w{4}-\w{4}-\w{4}-\w{12}>/
-    );
-    expect(result.result).toContain(JSON.stringify([{ sum: 2 }]));
-    expect(result.result).toMatch(
-      /<\/untrusted-data-\w{8}-\w{4}-\w{4}-\w{4}-\w{12}>/
-    );
+    expect(result.result).toBe(JSON.stringify([{ sum: 2 }]));
   });
 
   test('can run read queries in read-only mode', async () => {
@@ -899,14 +892,7 @@ describe('tools', () => {
       },
     });
 
-    expect(result.result).toContain('untrusted user data');
-    expect(result.result).toMatch(
-      /<untrusted-data-\w{8}-\w{4}-\w{4}-\w{4}-\w{12}>/
-    );
-    expect(result.result).toContain(JSON.stringify([{ sum: 2 }]));
-    expect(result.result).toMatch(
-      /<\/untrusted-data-\w{8}-\w{4}-\w{4}-\w{4}-\w{12}>/
-    );
+    expect(result.result).toBe(JSON.stringify([{ sum: 2 }]));
   });
 
   test('cannot run write queries in read-only mode', async () => {
